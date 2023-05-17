@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Exercise Info</title>
+</head>
+<body>
+    <h1>Exercise Info</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Exercise Name</th>
+                <th>Mass</th>
+                <th>Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if exercise %}
+                {% for row in exercise %}
+                    <tr>
+                        <td>{{ row[2] }}</td>
+                        <td>{{ row[3] }} ~ {{ row[4] }}</td>
+                        <td>{{ row[9] }}</td>
+                        <td>{{ row[6] }}</td>
+                        <td>{{ row[7] }}</td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="3">No exercise data found.</td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</body>
+</html>
