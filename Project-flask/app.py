@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, render_template, session, redirect
 from flask_cors import CORS
 from flask_mysqldb import MySQL
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -18,66 +19,60 @@ app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD')
 app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST')
 app.config['MYSQL_DB'] = os.getenv('MYSQL_DB')
 
-# 메인 페이지
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-# 로그인 페이지
-@app.route('/login')
-def login():
-    return render_template('login.html')
-
 # 로그인 API
 @app.route('/login', methods=['POST'])
 def login_api():
-    # HTTP 요청으로부터 필요한 데이터 추출
-    id = request.form['id']
-    password = request.form['password']
+    # JSON 데이터 추출
+    data = request.get_json()
+    id = data['id']
+    password = data['password']
 
     hashed_password = hashlib.sha512(password.encode('utf-8')).hexdigest()
 
-    # MySQL 데이터베이스에서 해당 회원 정보 추출
+    # MySQL 데이터베이스에서 ID 존재하는지 확인
     cursor = mysql.connection.cursor()
     sql = "SELECT * FROM members WHERE id = %s AND password = %s"
     val = (id, hashed_password)
     cursor.execute(sql, val)
-    member = cursor.fetchone()
-    cursor.close()
+    existing_member = cursor.fetchone()
 
-    # 해당 회원 정보가 없는 경우
-    if member is None:
-        return jsonify({'message': 'Login failed'}), 400
+    # 데이터베이스에 맞는 ID나 비밀번호가 없는 경우
+    if not existing_member:
+        return jsonify({'error': '등록되지 않은 사용자입니다.'}), 405
 
-    # 해당 회원 정보가 있는 경우
-    else:
-        session['user_id'] = id
-        return redirect('/exercise')
-
-# 회원가입 페이지
-@app.route('/signup')
-def siguup():
-    return render_template('signup.html')
+    # 로그인 성공
+    return jsonify({'message': '로그인 성공', 'id': existing_member[0]}), 200
 
 # 회원가입 API
 @app.route('/signup', methods=['POST'])
 def signup_api():
-    # HTTP 요청으로부터 필요한 데이터 추출
-    id = request.form['id']
-    password = request.form['password']
-    name = request.form['name']
-    gender = request.form['gender']
-    birthdate = request.form['birthdate']
-    height = request.form['height']
-    weight = request.form['weight']
-    email = request.form['email']
+    # JSON 데이터 추출
+    data = request.get_json()
+    id = data['id']
+    password = data['password']
+    name = data['name']
+    gender = data['gender']
+    birthdate = data['birthdate']
+    height = data['height']
+    weight = data['weight']
     
     hashed_password = hashlib.sha512(password.encode('utf-8')).hexdigest()
 
+    # MySQL 데이터베이스에서 해당 회원 정보 조회
+    cursor = mysql.connection.cursor()
+    sql = "SELECT * FROM members WHERE id = %s"
+    val = (id,)
+    cursor.execute(sql, val)
+    existing_member = cursor.fetchone()
+
+    if existing_member:
+        cursor.close()
+        return jsonify({'error': '이미 존재하는 ID입니다.'}), 409
+
     # MySQL 데이터베이스에 새로운 회원 정보 추가
     cursor = mysql.connection.cursor()
-    sql = "INSERT INTO members (id, password, name, gender, birthdate, height, weight, email) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
-    val = (id, hashed_password, name, gender, birthdate, height, weight, email)
+    sql = "INSERT INTO members (id, password, name, gender, birthdate, height, weight) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    val = (id, hashed_password, name, gender, birthdate, height, weight)
     cursor.execute(sql, val)
     mysql.connection.commit()
     cursor.close()
@@ -86,23 +81,63 @@ def signup_api():
     return jsonify({'message': 'Signup successful'}), 200
 
 # 운동정보 페이지
-@app.route('/exercise')
+@app.route('/exercise_log', methods = ['POST'])
 def exercise():
-    user_id = session.get('user_id')
-    
-    # 로그인하지 않은 경우 로그인 페이지로 리다이렉트
-    if user_id is None:
-        return redirect('/login')
+    data = request.get_json()
+    print(data)
+    id = data["id"]
+    date = data["date"]
     
     # 해당 사용자의 운동정보 조회
     cursor = mysql.connection.cursor()
-    sql = "SELECT * FROM exercise_log JOIN exercise ON exercise_log.exercise_code = exercise.exercise_code WHERE id = %s"
-    val = (user_id,)
+    sql = "SELECT * FROM exercise_log WHERE id = %s AND exercise_log.date = %s"
+    val = (id, date)
+
     cursor.execute(sql, val)
     exercise = cursor.fetchall()
     cursor.close()
     
-    return render_template('exercise.html', exercise = exercise)
+    exercise_list = []
+    for row in exercise:
+        exercise_dict = {
+			'id': row[1],
+            'exercise_name': row[5],
+            'date': row[2],
+            'start_time': row[3],
+            'end_time': row[4],
+            'exercise_time': row[8],
+            'mass': row[6],
+            'count': row[7]
+        }
+        exercise_list.append(exercise_dict)
+
+    return jsonify({'message': 'success', 'exercise_log': exercise_list, 'id': id}), 200
+
+# 운동정보 API
+@app.route('/exercise', methods=['POST'])
+def exercise_api():
+    # JSON 데이터 추출
+    data = request.get_json()
+    id = data['id']
+    date = data['date']
+    start_time = data['start_time']
+    exercise_time = data['exercise_time']
+    end_time = start_time + exercise_time
+    exercise_name = data['exercise_name']
+    mass = data['mass']
+    count = data['count']
+
+    # MySQL 데이터베이스에 새로운 운동 정보 추가
+    cursor = mysql.connection.cursor()
+    sql = "INSERT INTO exercise_log (id, date, start_time, end_time, exercise_name, mass, count) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    val = (id, date, start_time, end_time, exercise_name, mass, count)
+    cursor.execute(sql, val)
+    mysql.connection.commit()
+    cursor.close()
+
+    # HTTP 응답으로 성공 메시지 반환
+    return jsonify({'message': 'Exercise successful'}), 200
 
 if __name__ == '__main__':
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    #app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
